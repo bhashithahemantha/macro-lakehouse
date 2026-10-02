@@ -4,9 +4,10 @@ Keeping the logic here (not in the pipeline file) means it can be unit tested lo
 with a plain Spark session, while the pipeline file stays a thin, declarative layer.
 """
 
+from datetime import date
 from itertools import chain
 
-from pyspark.sql import Column, DataFrame
+from pyspark.sql import Column, DataFrame, Window
 from pyspark.sql import functions as F
 
 from macro_lakehouse.sources.treasury import sanitize_column, tenor_label, tenor_months
@@ -96,4 +97,58 @@ def as_of(scd2: DataFrame, known_at) -> DataFrame:
     ts = F.lit(known_at).cast("timestamp")
     return scd2.where(
         (F.col("__START_AT") <= ts) & (F.col("__END_AT").isNull() | (F.col("__END_AT") > ts))
+    )
+
+
+# ---------------------------------------------------------------- gold
+KEY_TENORS = {3.0: "y_3m", 24.0: "y_2y", 120.0: "y_10y", 360.0: "y_30y"}
+FLAT_THRESHOLD_PCT = 0.10
+
+
+def build_curve_metrics(silver: DataFrame) -> DataFrame:
+    """One row per date with the key tenors and the classic recession spreads."""
+    wide = (
+        silver.where(F.col("maturity_months").isin(list(KEY_TENORS)))
+        .groupBy("curve_date")
+        .pivot("maturity_months", list(KEY_TENORS))
+        .agg(F.first("yield_pct"))
+    )
+    for months, name in KEY_TENORS.items():
+        wide = wide.withColumnRenamed(str(months), name)
+
+    by_date = Window.orderBy("curve_date")
+    return (
+        wide.withColumn("spread_10y_2y", F.round(F.col("y_10y") - F.col("y_2y"), 4))
+        .withColumn("spread_10y_3m", F.round(F.col("y_10y") - F.col("y_3m"), 4))
+        .withColumn(
+            "curve_shape",
+            F.when(F.col("spread_10y_2y").isNull(), None)
+            .when(F.col("spread_10y_2y") < 0, "inverted")
+            .when(F.abs("spread_10y_2y") < FLAT_THRESHOLD_PCT, "flat")
+            .otherwise("normal"),
+        )
+        .withColumn("change_1d_10y", F.round(F.col("y_10y") - F.lag("y_10y").over(by_date), 4))
+    )
+
+
+# ---------------------------------------------------------------- table-level quality
+def table_health(df: DataFrame, today: date | None = None) -> DataFrame:
+    """One-row summary for table-level checks: row count, duplicate keys, data age.
+
+    Row-level rules (nulls, ranges) are pipeline expectations; these checks need a
+    whole-table view, so they are computed here and checked by expectations on this row.
+    """
+    today_col = F.lit(today) if today else F.current_date()
+    duplicates = (
+        df.groupBy(*KEY_COLUMNS)
+        .count()
+        .where("count > 1")
+        .agg(F.count("*").alias("duplicate_keys"))
+    )
+    stats = df.agg(
+        F.count("*").alias("row_count"),
+        F.max("curve_date").alias("latest_curve_date"),
+    )
+    return stats.crossJoin(duplicates).withColumn(
+        "age_days", F.datediff(today_col, F.col("latest_curve_date"))
     )

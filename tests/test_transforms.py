@@ -119,3 +119,69 @@ def test_as_of_before_publication_sees_nothing(history_df):
 def test_as_of_at_exact_revision_time_sees_new_value(history_df):
     rows = t.as_of(history_df, datetime(2025, 3, 7, 23)).collect()
     assert [r.yield_pct for r in rows] == [4.28]
+
+
+# ---------- gold ----------
+@pytest.fixture
+def gold_by_date(bronze_df):
+    rows = t.build_curve_metrics(t.to_long(bronze_df)).collect()
+    return {r.curve_date: r for r in rows}
+
+
+def test_gold_one_row_per_date(gold_by_date):
+    assert len(gold_by_date) == 3
+
+
+def test_gold_key_tenors(gold_by_date):
+    day = gold_by_date[date(2025, 3, 6)]
+    assert (day.y_3m, day.y_2y, day.y_10y, day.y_30y) == (4.34, 3.97, 4.28, 4.58)
+
+
+def test_gold_spreads(gold_by_date):
+    day = gold_by_date[date(2025, 3, 6)]
+    assert day.spread_10y_2y == 0.31  # 4.28 - 3.97
+    assert day.spread_10y_3m == -0.06  # 4.28 - 4.34: the 3m-10y curve is inverted
+
+
+def test_gold_daily_change(gold_by_date):
+    assert gold_by_date[date(2025, 3, 6)].change_1d_10y == 0.0  # 4.28 -> 4.28
+    assert gold_by_date[date(2025, 3, 5)].change_1d_10y == 0.07  # 4.21 -> 4.28
+    assert gold_by_date[date(2025, 3, 4)].change_1d_10y is None  # no earlier day
+
+
+def test_curve_shape_classification(spark):
+    rows = [
+        (date(2023, 7, 3), 24.0, 4.90),
+        (date(2023, 7, 3), 120.0, 3.80),  # inverted
+        (date(2023, 7, 5), 24.0, 4.00),
+        (date(2023, 7, 5), 120.0, 4.05),  # flat
+        (date(2023, 7, 6), 24.0, 3.50),
+        (date(2023, 7, 6), 120.0, 4.20),  # normal
+    ]
+    df = spark.createDataFrame(rows, ["curve_date", "maturity_months", "yield_pct"])
+    shapes = {r.curve_date: r.curve_shape for r in t.build_curve_metrics(df).collect()}
+    assert shapes == {
+        date(2023, 7, 3): "inverted",
+        date(2023, 7, 5): "flat",
+        date(2023, 7, 6): "normal",
+    }
+
+
+# ---------- table-level quality ----------
+def test_table_health_on_clean_data(bronze_df):
+    health = t.table_health(t.to_long(bronze_df), today=date(2025, 3, 10)).first()
+    assert health.row_count == 40
+    assert health.duplicate_keys == 0
+    assert health.latest_curve_date == date(2025, 3, 6)
+    assert health.age_days == 4
+
+
+def test_table_health_detects_duplicates(spark):
+    rows = [(date(2025, 3, 6), 120.0)] * 2 + [(date(2025, 3, 6), 24.0)]
+    df = spark.createDataFrame(rows, ["curve_date", "maturity_months"])
+    assert t.table_health(df, today=date(2025, 3, 6)).first().duplicate_keys == 1
+
+
+def test_table_health_detects_stale_data(bronze_df):
+    health = t.table_health(t.to_long(bronze_df), today=date(2025, 4, 1)).first()
+    assert health.age_days == 26
