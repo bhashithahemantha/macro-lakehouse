@@ -106,15 +106,21 @@ FLAT_THRESHOLD_PCT = 0.10
 
 
 def build_curve_metrics(silver: DataFrame) -> DataFrame:
-    """One row per date with the key tenors and the classic recession spreads."""
+    """One row per date with the key tenors and the classic recession spreads.
+
+    Uses conditional aggregation instead of DataFrame.pivot: the output columns are
+    fixed in code, so the declarative pipeline engine knows the schema up front.
+    """
     wide = (
         silver.where(F.col("maturity_months").isin(list(KEY_TENORS)))
         .groupBy("curve_date")
-        .pivot("maturity_months", list(KEY_TENORS))
-        .agg(F.first("yield_pct"))
+        .agg(
+            *[
+                F.max(F.when(F.col("maturity_months") == months, F.col("yield_pct"))).alias(name)
+                for months, name in KEY_TENORS.items()
+            ]
+        )
     )
-    for months, name in KEY_TENORS.items():
-        wide = wide.withColumnRenamed(str(months), name)
 
     by_date = Window.orderBy("curve_date")
     return (
