@@ -1,13 +1,16 @@
 [project]
 name = "macro-lakehouse"
 version = "0.1.0"
-description = "Add your description here"
+description = "Automated Databricks lakehouse pipeline turning daily US Treasury yield curve data into tested, analysis-ready recession indicators."
 readme = "README.md"
 authors = [
     { name = "Bhashitha Hemantha", email = "bhashithahemantha@gmail.com" }
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.11.2",
+    "requests>=2.34.2",
+]
 
 [project.scripts]
 macro-lakehouse = "macro_lakehouse:main"
@@ -15,3 +18,21 @@ macro-lakehouse = "macro_lakehouse:main"
 [build-system]
 requires = ["uv_build>=0.12.22,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "pyspark>=4.1,<4.2",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "ruff>=0.16.10",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]

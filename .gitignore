@@ -1,10 +1,15 @@
-# Python-generated files
-__pycache__/
-*.py[oc]
-build/
-dist/
-wheels/
-*.egg-info
+# Databricks bundle state
+.databricks/
 
-# Virtual environments
-.venv
+# Test and coverage output
+.coverage
+coverage.xml
+
+# Local Spark artefacts (created when tests run)
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Secrets and OS clutter
+.env
+.DS_Store
