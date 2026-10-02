@@ -5,6 +5,7 @@ import requests
 
 from macro_lakehouse.sources import treasury
 
+
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
@@ -26,7 +27,7 @@ def test_sanitize_column(raw, expected):
         ("t_1_5_month", 1.5),
         ("t_2_yr", 24.0),
         ("t_30_yr", 360.0),
-        ("date", None),          # not a tenor
+        ("date", None),  # not a tenor
         ("_source_file", None),  # not a tenor
     ],
 )
@@ -37,6 +38,7 @@ def test_tenor_months(column, months):
 @pytest.mark.parametrize(("months", "label"), [(3.0, "3M"), (1.5, "1.5M"), (24.0, "2Y")])
 def test_tenor_label(months, label):
     assert treasury.tenor_label(months) == label
+
 
 def test_build_url_contains_year():
     url = treasury.build_url(2025)
