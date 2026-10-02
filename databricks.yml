@@ -1,0 +1,20 @@
+bundle:
+  name: macro_lakehouse
+
+include:
+  - resources/*.yml
+
+variables:
+  catalog:
+    description: Unity Catalog catalog to deploy into
+    default: workspace
+  schema_name:
+    description: Base schema name
+    default: macro_lakehouse
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      host: https://dbc-6d7ee5c4-3ff5.cloud.databricks.com
