@@ -1,0 +1,34 @@
+resources:
+  jobs:
+    macro_lakehouse_daily:
+      name: macro_lakehouse_daily
+      max_concurrent_runs: 1
+
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "2"
+            dependencies:
+              - ../dist/*.whl
+
+      tasks:
+        - task_key: ingest
+          environment_key: default
+          python_wheel_task:
+            package_name: macro_lakehouse
+            entry_point: ingest
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${resources.schemas.macro_lakehouse.name}
+              - --run-id
+              - "{{job.run_id}}"
+              - --environment
+              - ${bundle.target}
+              - --start-year
+              - ${var.start_year}

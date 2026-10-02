@@ -9,8 +9,17 @@ variables:
     description: Unity Catalog catalog to deploy into
     default: workspace
   schema_name:
-    description: Base schema name
+    description: Base schema name (prefixed with your username in dev)
     default: macro_lakehouse
+  start_year:
+    description: First year of Treasury data to load (re-loading is safe)
+    default: 2024
+
+artifacts:
+  macro_lakehouse_wheel:
+    type: whl
+    build: uv build --wheel
+    path: .
 
 targets:
   dev:
