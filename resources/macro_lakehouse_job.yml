@@ -38,3 +38,21 @@ resources:
             - task_key: ingest
           pipeline_task:
             pipeline_id: ${resources.pipelines.macro_lakehouse_pipeline.id}
+
+        - task_key: report
+          depends_on:
+            - task_key: refresh_pipeline
+          run_if: ALL_DONE
+          environment_key: default
+          python_wheel_task:
+            package_name: macro_lakehouse
+            entry_point: report
+            parameters:
+              - --catalog
+              - ${var.catalog}
+              - --schema
+              - ${resources.schemas.macro_lakehouse.name}
+              - --run-id
+              - "{{job.run_id}}"
+              - --environment
+              - ${bundle.target}

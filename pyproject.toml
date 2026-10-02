@@ -14,6 +14,7 @@ dependencies = [
 
 [project.scripts]
 ingest = "macro_lakehouse.entrypoints:ingest"
+report = "macro_lakehouse.entrypoints:report"
 
 [build-system]
 requires = ["uv_build>=0.12.22,<0.13.0"]
