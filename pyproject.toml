@@ -8,8 +8,8 @@ authors = [
 ]
 requires-python = ">=3.11"
 dependencies = [
-    "matplotlib>=3.11.2",
-    "requests>=2.34.2",
+    "matplotlib>=3.5",
+    "requests>=2.28",
 ]
 
 [project.scripts]

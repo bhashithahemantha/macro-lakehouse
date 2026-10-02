@@ -699,8 +699,8 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "matplotlib", specifier = ">=3.11.2" },
-    { name = "requests", specifier = ">=2.34.2" },
+    { name = "matplotlib", specifier = ">=3.5" },
+    { name = "requests", specifier = ">=2.28" },
 ]
 
 [package.metadata.requires-dev]
