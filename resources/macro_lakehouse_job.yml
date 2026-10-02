@@ -32,3 +32,9 @@ resources:
               - ${bundle.target}
               - --start-year
               - ${var.start_year}
+
+        - task_key: refresh_pipeline
+          depends_on:
+            - task_key: ingest
+          pipeline_task:
+            pipeline_id: ${resources.pipelines.macro_lakehouse_pipeline.id}

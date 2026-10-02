@@ -1,0 +1,24 @@
+resources:
+  pipelines:
+    macro_lakehouse_pipeline:
+      name: macro_lakehouse_pipeline
+      serverless: true
+      channel: CURRENT
+      catalog: ${var.catalog}
+      schema: ${resources.schemas.macro_lakehouse.name}
+
+      # root_path is added to the Python path, so pipeline code can import macro_lakehouse
+      root_path: ../src
+      libraries:
+        - glob:
+            include: ../src/pipeline/transformations/**
+
+      configuration:
+        macro.landing_path: /Volumes/${var.catalog}/${resources.schemas.macro_lakehouse.name}/landing/treasury
+        macro.max_age_days: "7"
+
+      # Publish the event log to a Unity Catalog table (used by the run report later)
+      event_log:
+        catalog: ${var.catalog}
+        schema: ${resources.schemas.macro_lakehouse.name}
+        name: ops_pipeline_event_log
