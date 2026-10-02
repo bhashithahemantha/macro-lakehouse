@@ -6,7 +6,7 @@ with a plain Spark session, while the pipeline file stays a thin, declarative la
 
 from itertools import chain
 
-from pyspark.sql import DataFrame
+from pyspark.sql import Column, DataFrame
 from pyspark.sql import functions as F
 
 from macro_lakehouse.sources.treasury import sanitize_column, tenor_label, tenor_months
@@ -65,4 +65,35 @@ def to_long(bronze: DataFrame) -> DataFrame:
             F.col("yield_raw").cast("double").alias("yield_pct"),
             *LINEAGE_COLUMNS,
         )
+    )
+
+
+# ---------------------------------------------------------------- point-in-time (SCD type 2)
+SEQUENCE_COLUMN = "_file_modified_at"
+HISTORY_COLUMNS = ["yield_pct"]  # only a changed yield creates a new version
+
+
+def change_sequence() -> Column:
+    """Ordering AUTO CDC uses to decide which version of a value is newest.
+
+    Every ingest run writes new files, so the file modification time orders revisions.
+    In SCD type 2 this value becomes the __START_AT / __END_AT of each version.
+    """
+    return F.col(SEQUENCE_COLUMN)
+
+
+def current_rows(scd2: DataFrame) -> DataFrame:
+    """Latest version of every key: the rows whose validity has not ended."""
+    return scd2.where(F.col("__END_AT").isNull())
+
+
+def as_of(scd2: DataFrame, known_at) -> DataFrame:
+    """Each key exactly as it was known at `known_at` (point-in-time view).
+
+    Prevents look-ahead bias: a backtest only sees values that had been published
+    at the time, not later revisions.
+    """
+    ts = F.lit(known_at).cast("timestamp")
+    return scd2.where(
+        (F.col("__START_AT") <= ts) & (F.col("__END_AT").isNull() | (F.col("__END_AT") > ts))
     )
