@@ -1,6 +1,6 @@
 [project]
 name = "macro-lakehouse"
-version = "0.1.0"
+version = "0.1.2"
 description = "Automated Databricks lakehouse pipeline turning daily US Treasury yield curve data into tested, analysis-ready recession indicators."
 readme = "README.md"
 authors = [

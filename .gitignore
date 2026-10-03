@@ -13,3 +13,5 @@ derby.log
 # Secrets and OS clutter
 .env
 .DS_Storelatest.html
+latest.html
+__pycache__/
