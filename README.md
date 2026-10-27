@@ -21,24 +21,26 @@ with a specific Databricks feature:
 
 ## Architecture
 
-US Treasury CSV ──(1) ingest task──▶ UC Volume: landing/
-                                         │ Auto Loader
-                                         ▼
-                              bronze_treasury_yields   (raw, append-only)
-                                         │ unpivot + expectations
-                                         ▼
-                              treasury_yields_long     (temporary view)
-                                         │ AUTO CDC (SCD Type 2)
-                                         ▼
-                         silver_treasury_yields_history (full history)
-                                         ▼
-                         silver_treasury_yields          (current values)
-                              ┌──────────┴──────────┐
-                              ▼                     ▼
-               gold_yield_curve_daily        ops_silver_health
-               (spreads, inversion)          (freshness, duplicates)
-                                         
-pipeline event log ──(3) report task──▶ HTML run report in reports/ volume
+```mermaid
+flowchart TD
+    A[US Treasury<br/>daily yield curve CSV] -->|1. ingest task<br/>Python wheel| B[(Unity Catalog Volume<br/>landing/)]
+    B -->|Auto Loader| C[bronze_treasury_yields<br/>raw, append-only]
+    C -->|unpivot + expectations| D[treasury_yields_long<br/>temporary view]
+    D -->|AUTO CDC · SCD Type 2| E[silver_treasury_yields_history<br/>full history]
+    E --> F[silver_treasury_yields<br/>current values]
+    F --> G[gold_yield_curve_daily<br/>spreads, inversion]
+    F --> H[ops_silver_health<br/>freshness, duplicates]
+    I[(Pipeline event log)] -->|3. report task| J[HTML run report<br/>reports/ volume]
+
+    subgraph P[2. refresh_pipeline · Lakeflow Declarative Pipeline]
+        C
+        D
+        E
+        F
+        G
+        H
+    end
+```
 
 ## Tech stack
 ## Data source
