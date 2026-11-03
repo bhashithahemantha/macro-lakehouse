@@ -105,6 +105,76 @@ a year never creates duplicate silver rows. If a value has changed, it is record
 a new version.
 
 ## Data model
+
+The pipeline follows the medallion pattern. Each layer has one job.
+
+| Layer | Table | Grain (one row per…) | Type | Purpose |
+|---|---|---|---|---|
+| Bronze | `bronze_treasury_yields` | CSV row (date) | Streaming table | Raw data exactly as received, all values as strings, plus file lineage |
+| Silver | `treasury_yields_long` | date × maturity | Temporary view | Unpivoted, typed rows where row-level quality rules run |
+| Silver | `silver_treasury_yields_history` | date × maturity × version | Streaming table (SCD Type 2) | Every published version of every value |
+| Silver | `silver_treasury_yields` | date × maturity | Materialized view | The current value for each key |
+| Gold | `gold_yield_curve_daily` | date | Materialized view | Key tenors, recession spreads and curve shape |
+| Ops | `ops_silver_health` | one row | Materialized view | Table-level checks: row count, duplicates, freshness |
+
+### Bronze: raw and append-only
+Bronze keeps values as **strings** (`inferColumnTypes = false`), so nothing is lost or
+changed on the way in. Headers are cleaned into Delta-safe names, and three lineage
+columns record where each row came from: `_source_file`, `_file_modified_at` and
+`_ingested_at`. Bronze is the audit trail. If silver logic changes, it can be rebuilt
+from here.
+
+### Silver: long format, typed, versioned
+`to_long` unpivots the wide CSV (one column per maturity) into **one row per
+(curve_date, maturity)**, with `maturity_months` (e.g. 120), `maturity_label` (e.g. `10Y`)
+and `yield_pct` as a double. Blank values are dropped, because Treasury leaves a
+maturity empty for dates before it existed.
+
+**Why long format?** New maturities become new rows, not new columns, so no code or
+schema change is needed downstream. It also makes filtering and aggregating by
+maturity simple.
+
+**SCD Type 2 history.** `silver_treasury_yields_history` is maintained by AUTO CDC:
+- **Keys:** `curve_date`, `maturity_months`
+- **Sequence:** `_file_modified_at` (later files win)
+- **Tracked column:** `yield_pct`. Only a *changed* yield creates a new version, so
+  reloading identical data adds nothing.
+
+Each version carries `__START_AT` and `__END_AT`. The current table keeps the rows where
+`__END_AT IS NULL`, and `as_of()` returns the data exactly as it was known at any past
+moment:
+
+```sql
+-- What did we believe the curve was on 1 March 2025?
+SELECT curve_date, maturity_label, yield_pct
+FROM silver_treasury_yields_history
+WHERE __START_AT <= TIMESTAMP '2025-03-01'
+  AND (__END_AT IS NULL OR __END_AT > TIMESTAMP '2025-03-01');
+```
+
+That prevents **look-ahead bias**: a backtest only sees values that had been published
+at the time, not later corrections.
+
+### Gold: analysis-ready metrics
+`gold_yield_curve_daily` has one row per date with:
+
+| Column | Meaning |
+|---|---|
+| `y_3m`, `y_2y`, `y_10y`, `y_30y` | Yields at the key maturities |
+| `spread_10y_2y` | 10-year minus 2-year, the classic recession indicator |
+| `spread_10y_3m` | 10-year minus 3-month, the indicator the Federal Reserve watches |
+| `curve_shape` | `inverted` (10y–2y < 0), `flat` (within ±0.10 pp) or `normal` |
+| `change_1d_10y` | Day-on-day change in the 10-year yield |
+
+The key maturities are picked out with **conditional aggregation**
+(`MAX(CASE WHEN …)`) rather than `pivot()`, because a declarative pipeline needs to
+know the output schema up front.
+
+### Clustering
+History is clustered by `(curve_date, maturity_months)`, and the current and gold
+tables by `curve_date`, matching the most common query filters. Liquid clustering
+does this without managing physical partitions.
+
 ## Data quality
 ## Orchestration
 ## Monitoring
