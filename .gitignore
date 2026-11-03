@@ -12,6 +12,12 @@ derby.log
 
 # Secrets and OS clutter
 .env
-.DS_Storelatest.html
+.DS_Store
+
+# Local outputs
 latest.html
 __pycache__/
+
+# Local environment and build output
+.venv/
+dist/
