@@ -61,6 +61,49 @@ A Databricks Job runs three tasks in order. Ingest downloads the CSVs into a Uni
 | **matplotlib** | Charts in the HTML run report | Simple, dependency-light charting for a static report |
 
 ## Data source
+
+**US Department of the Treasury: Daily Treasury Par Yield Curve Rates**
+([treasury.gov](https://home.treasury.gov/resource-center/data-chart-center/interest-rates/TextView?type=daily_treasury_yield_curve))
+
+- **What it is:** the yield (%) on US government debt at each maturity, from 1 month to 30 years, published every business day.
+- **Format:** one CSV per calendar year, one row per date, one column per maturity.
+- **Access:** public, free, no API key.
+- **Volume:** small (~250 rows per year), which keeps the focus on correctness rather than scale.
+
+### How it is ingested
+
+The `ingest` job task (`macro_lakehouse.entrypoints:ingest`) downloads every year from
+`start_year` (a bundle variable, default 2024) to the current year, and writes each one
+as `treasury_<year>.csv` into a run-specific folder in the Unity Catalog `landing` volume.
+
+The download client (`sources/treasury.py`) is built to fail safely:
+
+| Risk | How it's handled |
+|---|---|
+| Temporary network or server errors | Retries with exponential backoff on 429 and 5xx responses |
+| Requests hanging | 30-second timeout |
+| An HTML error page returned with status 200 | `validate_csv` checks that the header starts with `Date` before anything is written |
+| Client errors such as 404 | Not retried, because retrying would not help |
+
+### Quirks in the data
+
+| Quirk | Example | How it's handled |
+|---|---|---|
+| Inconsistent headers | `1 Mo`, `1.5 Month`, `10 Yr` | `sanitize_column` turns them into safe names (`t_1_mo`, `t_1_5_month`) |
+| Maturities change over time | The 1.5-month and 4-month tenors were added in later years | Auto Loader schema evolution (`addNewColumns`) plus unpivoting to long format, so new maturities need no code changes |
+| Wide format | One column per maturity | Unpivoted to one row per (date, maturity) for analysis |
+| Maturity is only in the header text | `t_10_yr` | `tenor_months` parses it into months (120); `tenor_label` makes `10Y` |
+| Missing values | Some maturities are blank on some dates | Data quality expectations in silver (see Data quality) |
+| Published values can be revised | A rate re-published with a correction | SCD Type 2 history in silver (see Data model) |
+
+### Reruns are safe
+
+Each run re-downloads whole years into a new folder, so bronze can receive the same
+rows more than once. That is deliberate: bronze stays raw and append-only, and
+de-duplication happens in silver, where AUTO CDC keys on (date, maturity). Reloading
+a year never creates duplicate silver rows. If a value has changed, it is recorded as
+a new version.
+
 ## Data model
 ## Data quality
 ## Orchestration
